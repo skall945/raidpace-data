@@ -1,0 +1,85 @@
+zona 31 'Vault of the Incarnates': 8 boss
+  Eranog (enc 2587 d5): 530 con log in 5s
+  Terros (enc 2639 d5): 420 con log in 7s
+  The Primal Council (enc 2590 d5): 464 con log in 7s
+  Sennarth, The Cold Breath (enc 2592 d5): 338 con log in 3s
+  Dathea, Ascended (enc 2635 d5): 291 con log in 3s
+  Kurog Grimtotem (enc 2605 d5): 300 con log in 6s
+  Broodkeeper Diurna (enc 2614 d5): 239 con log in 6s
+  Raszageth the Storm-Eater (enc 2607 d5): 209 con log in 10s
+zona 33 'Aberrus, the Shadowed Crucible': 9 boss
+  Kazzara, the Hellforged (enc 2688 d5): 592 con log in 9s
+  The Amalgamation Chamber (enc 2687 d5): 534 con log in 5s
+  The Forgotten Experiments (enc 2693 d5): 433 con log in 4s
+  Assault of the Zaqali (enc 2682 d5): 540 con log in 5s
+  Rashok, the Elder (enc 2680 d5): 449 con log in 11s
+  The Vigilant Steward, Zskarn (enc 2689 d5): 360 con log in 3s
+  Magmorax (enc 2683 d5): 341 con log in 3s
+  Echo of Neltharion (enc 2684 d5): 348 con log in 3s
+  Scalecommander Sarkareth (enc 2685 d5): 220 con log in 2s
+zona 35 'Amirdrassil, the Dream's Hope': 9 boss
+  Gnarlroot (enc 2820 d5): 780 con log in 10s
+  Igira the Cruel (enc 2709 d5): 760 con log in 10s
+  Volcoross (enc 2737 d5): 507 con log in 8s
+  Council of Dreams (enc 2728 d5): 397 con log in 4s
+  Larodar, Keeper of the Flame (enc 2731 d5): 392 con log in 4s
+  Nymue, Weaver of the Cycle (enc 2708 d5): 365 con log in 3s
+  Smolderon (enc 2824 d5): 549 con log in 5s
+  Tindral Sageswift, Seer of the Flame (enc 2786 d5): 482 con log in 4s
+  Fyrakk the Blazing (enc 2677 d5): 477 con log in 14s
+zona 38 'Nerub-ar Palace': 8 boss
+  Ulgrax the Devourer (enc 2902 d5): 906 con log in 16s
+  The Bloodbound Horror (enc 2917 d5): 906 con log in 9s
+  Sikran, Captain of the Sureki (enc 2898 d5): 897 con log in 9s
+  Rasha'nan (enc 2918 d5): 893 con log in 9s
+  Broodtwister Ovi'nax (enc 2919 d5): 904 con log in 9s
+  Nexus-Princess Ky'veza (enc 2920 d5): 892 con log in 12s
+  The Silken Court (enc 2921 d5): 867 con log in 12s
+  Queen Ansurek (enc 2922 d5): 898 con log in 12s
+zona 42 'Liberation of Undermine': 8 boss
+  Vexie and the Geargrinders (enc 3009 d5): 920 con log in 13s
+  Cauldron of Carnage (enc 3010 d5): 913 con log in 12s
+  Stix Bunkjunker (enc 3012 d5): 909 con log in 12s
+  Rik Reverb (enc 3011 d5): 901 con log in 13s
+  Sprocketmonger Lockenstock (enc 3013 d5): 912 con log in 12s
+  One-Armed Bandit (enc 3014 d5): 919 con log in 12s
+  Mug'Zee, Heads of Security (enc 3015 d5): 888 con log in 8s
+  Chrome King Gallywix (enc 3016 d5): 916 con log in 16s
+zona 44 'Manaforge Omega': 8 boss
+  Plexus Sentinel (enc 3129 d5): 809 con log in 23s
+  Loom'ithar (enc 3131 d5): 823 con log in 16s
+  Soulbinder Naazindhri (enc 3130 d5): 806 con log in 13s
+  Forgeweaver Araz (enc 3132 d5): 777 con log in 22s
+  The Soul Hunters (enc 3122 d5): 794 con log in 12s
+  Fractillus (enc 3133 d5): 811 con log in 14s
+  Nexus-King Salhadaar (enc 3134 d5): 843 con log in 23s
+  enc 3135 d5 p11: HTTP Error 408: Request Timeout
+  Dimensius, the All-Devouring (enc 3135 d5): 379 con log in 31s
+zona 46 'VS / DR / MQD': 9 boss
+  Imperator Averzian (enc 3176 d5): 795 con log in 12s
+  Vorasius (enc 3177 d5): 794 con log in 19s
+  Fallen-King Salhadaar (enc 3179 d5): 773 con log in 15s
+  Vaelgor & Ezzorak (enc 3178 d5): 769 con log in 26s
+  Lightblinded Vanguard (enc 3180 d5): 739 con log in 17s
+  Crown of the Cosmos (enc 3181 d5): 679 con log in 17s
+  Chimaerus, the Undreamt God (enc 3306 d5): 738 con log in 32s
+  Belo'ren, Child of Al'ar (enc 3182 d5): 786 con log in 10s
+  Midnight Falls (enc 3183 d5): 634 con log in 14s
+zona 53 'The Venomous Abyss': 8 boss
+  Nek'zali the Soulcoiler (enc 3470 d5): 0 con log in 0s
+  Entombed Sentinels (enc 3445 d5): 0 con log in 0s
+  Vashnik the Malignant (enc 3455 d5): 0 con log in 0s
+  The Lost Explorers (enc 3497 d5): 0 con log in 0s
+  Sszorak (enc 3420 d5): 0 con log in 0s
+  The Twin Fangs (enc 3421 d5): 0 con log in 0s
+  The Coiled Altar (enc 3429 d5): 0 con log in 0s
+  Ula'tek (enc 3492 d5): 0 con log in 0s
+zona 54 'The Venomous Abyss': 8 boss
+  Nek'zali the Soulcoiler (enc 53470 d5): 0 con log in 0s
+  Entombed Sentinels (enc 53445 d5): 0 con log in 0s
+  Vashnik the Malignant (enc 53455 d5): 0 con log in 0s
+  The Lost Explorers (enc 53497 d5): 0 con log in 1s
+  Sszorak (enc 53420 d5): 0 con log in 0s
+  The Twin Fangs (enc 53421 d5): 0 con log in 0s
+  The Coiled Altar (enc 53429 d5): 0 con log in 1s
+  Ula'tek (enc 53492 d5): 0 con log in 1s

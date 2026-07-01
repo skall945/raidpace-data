@@ -3,11 +3,11 @@ name: Update logdata
 on:
   schedule:
     - cron: '17 3 * * *'   # ogni notte alle 03:17 UTC
-  workflow_dispatch:        # avvio manuale dalla UI
+  workflow_dispatch:
     inputs:
       zones:
         description: "ID zona WCL (spazio-separati)"
-        default: "46"
+        default: "31 33 35 38 42 44 46 53 54"
 
 permissions:
   contents: write
@@ -20,11 +20,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Genera logdata.json
+      - name: Genera logdata.json (raid da Dragonflight in poi, Mythic)
         env:
           WCL_CLIENT_ID: ${{ secrets.WCL_CLIENT_ID }}
           WCL_CLIENT_SECRET: ${{ secrets.WCL_CLIENT_SECRET }}
-        run: python gen.py ${{ github.event.inputs.zones || '46' }}
+          DIFFS: "5"
+        run: python gen.py ${{ github.event.inputs.zones || '31 33 35 38 42 44 46 53 54' }}
       - name: Commit se cambiato
         run: |
           git config user.name "raidpace-bot"
