@@ -1,0 +1,34 @@
+name: Update logdata
+
+on:
+  schedule:
+    - cron: '17 3 * * *'   # ogni notte alle 03:17 UTC
+  workflow_dispatch:        # avvio manuale dalla UI
+    inputs:
+      zones:
+        description: "ID zona WCL (spazio-separati)"
+        default: "46"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Genera logdata.json
+        env:
+          WCL_CLIENT_ID: ${{ secrets.WCL_CLIENT_ID }}
+          WCL_CLIENT_SECRET: ${{ secrets.WCL_CLIENT_SECRET }}
+        run: python gen.py ${{ github.event.inputs.zones || '46' }}
+      - name: Commit se cambiato
+        run: |
+          git config user.name "raidpace-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add logdata.json
+          git commit -m "aggiorna logdata.json ($(date -u +%F))" || echo "nessuna modifica"
+          git push
