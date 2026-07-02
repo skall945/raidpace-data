@@ -1,16 +1,18 @@
 # -*- coding: utf-8 -*-
-"""Genera logdata.json per RaidPace: mappa LEGGERA di CHI ha un log pubblico su
-Warcraft Logs, per ogni boss delle zone indicate (fightRankings, ~15 query/boss).
+"""Genera logdata.json per RaidPace.
 
-L'app usa questa mappa come indicatore 'ha log' + filtro; i pull/log ESATTI della
-prima kill li prende al clic (dal vivo). Cosi' copre TUTTI i raid senza il costo
-enorme del pre-calcolo first-kill.
+Due modalita' per zona:
+- LIGHT: mappa di CHI ha un log pubblico (fightRankings, ~15 query/boss).
+  Voce = 1 (solo indicatore).
+- FULL (env FULL="46 50"): in piu', per ogni gilda con log, PULL ALLA PRIMA KILL
+  + URL del log della prima kill, per TUTTI i boss della zona in UNA passata
+  (i report della gilda vengono letti una volta sola per l'intero raid).
+  Voce = [pull, url]. INCREMENTALE: le gilde gia' calcolate non si rifanno
+  (il first-kill non cambia mai), quindi le notti successive costano poco.
 
 Autonomo. Credenziali WCL da env WCL_CLIENT_ID / WCL_CLIENT_SECRET.
-Uso:  python gen.py 46 44 42 ...   (ID zona WCL). Default: le zone in ZONES.
-Diff: env DIFFS (default "5 4" = Mythic+Heroic).
-
-Formato: {"generatedAt":epoch,"encounters":{"<enc>:<diff>":{"<nome|server|reg>":1}}}
+Uso:  python gen.py 46 44 ...   (ID zona WCL; default env ZONES)
+Env:  DIFFS="5" | FULL="46 50" | WORKERS=8 | OUT=logdata.json
 """
 import sys
 import os
@@ -19,16 +21,22 @@ import time
 import base64
 import urllib.request
 import urllib.error
+from concurrent.futures import ThreadPoolExecutor
 
 TOKEN_URL = "https://www.warcraftlogs.com/oauth/token"
 GQL_URL = "https://www.warcraftlogs.com/api/v2/client"
-DIFFS = [int(x) for x in os.environ.get("DIFFS", "5 4").split()]
-# zone di default: dai raid recenti (Dragonflight in poi). Sovrascrivibili da argv.
+DIFFS = [int(x) for x in os.environ.get("DIFFS", "5").split()]
 ZONES = [int(x) for x in os.environ.get("ZONES", "31 33 35 38 42 44 46 50 53 54 57").split()]
+FULL = set(int(x) for x in os.environ.get("FULL", "46 50").split() if x.strip())
+WORKERS = int(os.environ.get("WORKERS", "8"))
 
 FR_QUERY = ("query($e:Int!,$d:Int!,$p:Int!){worldData{encounter(id:$e){"
             "fightRankings(difficulty:$d,page:$p)}}}")
 ENC_QUERY = "query($z:Int!){worldData{zone(id:$z){name encounters{id name}}}}"
+REP_ALL_QUERY = ("query($g:Int!,$z:Int!,$p:Int!){reportData{reports("
+                 "guildID:$g,zoneID:$z,page:$p,limit:25){data{code startTime "
+                 "fights(killType:Encounters){id encounterID kill difficulty startTime}}"
+                 "has_more_pages}}}")
 _TOKEN = None
 
 
@@ -49,7 +57,7 @@ def get_token():
         return json.loads(r.read().decode())["access_token"]
 
 
-def gql(query, variables, tries=6):
+def gql(query, variables, tries=8):
     body = json.dumps({"query": query, "variables": variables}).encode()
     req = urllib.request.Request(GQL_URL, data=body, headers={
         "Authorization": "Bearer " + _TOKEN, "Content-Type": "application/json"})
@@ -58,7 +66,8 @@ def gql(query, variables, tries=6):
             return json.loads(r.read().decode()).get("data") or {}
     except urllib.error.HTTPError as e:
         if e.code in (429, 502, 503) and tries > 1:
-            time.sleep(3.0 * (7 - tries))
+            # 429 = budget orario: attesa lunga e paziente (il job e' notturno)
+            time.sleep(60.0 if e.code == 429 else 3.0 * (9 - tries))
             return gql(query, variables, tries - 1)
         raise
 
@@ -68,25 +77,56 @@ def zone_encounters(zid):
     return z.get("name") or str(zid), (z.get("encounters") or [])
 
 
-def haslog_map(eid, diff):
+def fr_guilds(eid, diff):
+    """{key -> guildID} delle gilde con log pubblico sul boss."""
     out = {}
     for page in range(1, 60):
         try:
             fr = ((gql(FR_QUERY, {"e": eid, "d": diff, "p": page})
                    .get("worldData") or {}).get("encounter") or {}).get("fightRankings") or {}
         except Exception as ex:
-            sys.stderr.write(f"  enc {eid} d{diff} p{page}: {ex}\n")
+            sys.stderr.write(f"  fightRankings enc {eid} d{diff} p{page}: {ex}\n")
             break
         for r in (fr.get("rankings") or []):
             g = r.get("guild") or {}
             s = r.get("server") or {}
-            nm = g.get("name")
-            if not nm:
-                continue
-            out[_lognorm(nm) + "|" + _lognorm(s.get("name")) + "|"
-                + (s.get("region") or "").lower()] = 1
+            nm, gid = g.get("name"), g.get("id")
+            if nm and gid:
+                out.setdefault(_lognorm(nm) + "|" + _lognorm(s.get("name")) + "|"
+                               + (s.get("region") or "").lower(), gid)
         if not fr.get("hasMorePages"):
             break
+    return out
+
+
+def guild_firstkills(gid, zid):
+    """Report della gilda per la zona, UNA volta: {(enc,diff) -> [pull, url]}."""
+    fights = []   # (ts, enc, diff, kill, code, fid)
+    for page in range(1, 25):
+        try:
+            blk = ((gql(REP_ALL_QUERY, {"g": gid, "z": zid, "p": page})
+                    .get("reportData") or {}).get("reports") or {})
+        except Exception:
+            break
+        for r in (blk.get("data") or []):
+            rs = r.get("startTime") or 0
+            code = r.get("code")
+            for f in (r.get("fights") or []):
+                fights.append((rs + (f.get("startTime") or 0), f.get("encounterID"),
+                               f.get("difficulty"), bool(f.get("kill")),
+                               code, f.get("id")))
+        if not blk.get("has_more_pages"):
+            break
+    fights.sort(key=lambda x: x[0])
+    out, counters = {}, {}
+    for ts, enc, diff, kill, code, fid in fights:
+        k = (enc, diff)
+        if k in out:
+            continue
+        counters[k] = counters.get(k, 0) + 1
+        if kill:
+            out[k] = [counters[k],
+                      f"https://www.warcraftlogs.com/reports/{code}?fight={fid or 'last'}"]
     return out
 
 
@@ -95,12 +135,17 @@ def main():
     zones = [int(a) for a in sys.argv[1:]] or ZONES
     _TOKEN = get_token()
     outfile = os.environ.get("OUT", "logdata.json")
-    # riparti dal file esistente: aggiornamenti incrementali per zona
     try:
         out = json.load(open(outfile, encoding="utf-8"))
         out.setdefault("encounters", {})
     except Exception:
-        out = {"generatedAt": int(time.time()), "encounters": {}}
+        out = {"encounters": {}}
+
+    def save():
+        out["generatedAt"] = int(time.time())
+        with open(outfile, "w", encoding="utf-8") as f:
+            json.dump(out, f, ensure_ascii=False, separators=(",", ":"))
+
     for zid in zones:
         try:
             zname, encs = zone_encounters(zid)
@@ -109,19 +154,59 @@ def main():
             continue
         if not encs:
             continue
-        sys.stderr.write(f"zona {zid} '{zname}': {len(encs)} boss\n")
+        sys.stderr.write(f"zona {zid} '{zname}': {len(encs)} boss"
+                         f"{' [FULL]' if zid in FULL else ''}\n")
+        # 1) mappa LIGHT per ogni boss (chi ha log) + raccolta gid
+        guild_gids = {}          # key -> gid (unione su tutti i boss della zona)
+        guild_bosses = {}        # key -> set di "enc:diff" in cui appare
         for e in encs:
             eid = e.get("id")
             for diff in DIFFS:
                 t = time.time()
-                m = haslog_map(eid, diff)
-                if m:
-                    out["encounters"][f"{eid}:{diff}"] = m
-                out["generatedAt"] = int(time.time())
-                with open(outfile, "w", encoding="utf-8") as f:
-                    json.dump(out, f, ensure_ascii=False, separators=(",", ":"))
+                m = fr_guilds(eid, diff)
+                ek = f"{eid}:{diff}"
+                enc_map = out["encounters"].setdefault(ek, {})
+                for key, gid in m.items():
+                    if not isinstance(enc_map.get(key), list):
+                        enc_map[key] = 1        # indicatore (non degradare i [pull,url])
+                    guild_gids.setdefault(key, gid)
+                    guild_bosses.setdefault(key, set()).add(ek)
+                save()
                 sys.stderr.write(f"  {e.get('name')} (enc {eid} d{diff}): "
                                  f"{len(m)} con log in {time.time()-t:.0f}s\n")
+        if zid not in FULL:
+            continue
+        # 2) FULL incrementale: first-kill [pull,url] per le gilde non ancora fatte
+        todo = [(key, gid) for key, gid in guild_gids.items()
+                if any(not isinstance(out["encounters"].get(ek, {}).get(key), list)
+                       for ek in guild_bosses.get(key, ()))]
+        sys.stderr.write(f"  FULL: {len(todo)} gilde da calcolare "
+                         f"({len(guild_gids)-len(todo)} gia' fatte)\n")
+        done = [0]
+
+        def work(item):
+            key, gid = item
+            try:
+                fk = guild_firstkills(gid, zid)
+            except Exception:
+                fk = {}
+            return key, fk
+
+        t0 = time.time()
+        with ThreadPoolExecutor(max_workers=WORKERS) as ex:
+            for key, fk in ex.map(work, todo):
+                for (enc, diff), val in fk.items():
+                    ek = f"{enc}:{diff}"
+                    if ek in out["encounters"] and key in out["encounters"][ek]:
+                        out["encounters"][ek][key] = val
+                done[0] += 1
+                if done[0] % 25 == 0:
+                    save()
+                    rate = done[0] / max(1, time.time() - t0)
+                    sys.stderr.write(f"  FULL: {done[0]}/{len(todo)} "
+                                     f"({rate:.1f}/s, eta {int((len(todo)-done[0])/max(rate,0.01)/60)}m)\n")
+        save()
+        sys.stderr.write(f"  FULL zona {zid} completata in {int((time.time()-t0)/60)}m\n")
 
 
 if __name__ == "__main__":

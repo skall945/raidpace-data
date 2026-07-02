@@ -25,6 +25,8 @@ jobs:
           WCL_CLIENT_ID: ${{ secrets.WCL_CLIENT_ID }}
           WCL_CLIENT_SECRET: ${{ secrets.WCL_CLIENT_SECRET }}
           DIFFS: "5"
+          # FULL = anche pull+log della PRIMA KILL (incrementale: solo gilde nuove)
+          FULL: "46 50"
         run: python gen.py ${{ github.event.inputs.zones || '31 33 35 38 42 44 46 50 53 54 57' }}
       - name: Commit se cambiato
         run: |
