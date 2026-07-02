@@ -2,7 +2,8 @@ name: Update logdata
 
 on:
   schedule:
-    - cron: '17 3 * * *'   # ogni notte alle 03:17 UTC
+    - cron: '17 3 * * *'   # prima corsa notturna (03:17 UTC)
+    - cron: '17 5 * * *'   # seconda corsa: riprende dove la prima si e' fermata
   workflow_dispatch:
     inputs:
       zones:
@@ -12,26 +13,37 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: logdata
+  cancel-in-progress: false
+
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
       - name: Genera logdata.json (raid da Dragonflight in poi, Mythic)
+        # anche se questo step fallisce/scade, il commit sotto salva il parziale
+        continue-on-error: true
         env:
           WCL_CLIENT_ID: ${{ secrets.WCL_CLIENT_ID }}
           WCL_CLIENT_SECRET: ${{ secrets.WCL_CLIENT_SECRET }}
           DIFFS: "5"
-          # FULL = anche pull+log della PRIMA KILL (incrementale: solo gilde nuove)
+          # FULL = anche pull+url della PRIMA KILL (incrementale: solo gilde nuove)
           FULL: "46 50"
+          # esce pulito prima del limite del job -> il parziale viene committato
+          MAX_MINUTES: "100"
         run: python gen.py ${{ github.event.inputs.zones || '31 33 35 38 42 44 46 50 53 54 57' }}
       - name: Commit se cambiato
+        if: always()
         run: |
           git config user.name "raidpace-bot"
           git config user.email "actions@users.noreply.github.com"
+          git pull --rebase --autostash || true
           git add logdata.json
-          git commit -m "aggiorna logdata.json ($(date -u +%F))" || echo "nessuna modifica"
+          git commit -m "aggiorna logdata.json ($(date -u +%FT%H:%M))" || echo "nessuna modifica"
           git push

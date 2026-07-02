@@ -29,6 +29,8 @@ DIFFS = [int(x) for x in os.environ.get("DIFFS", "5").split()]
 ZONES = [int(x) for x in os.environ.get("ZONES", "31 33 35 38 42 44 46 50 53 54 57").split()]
 FULL = set(int(x) for x in os.environ.get("FULL", "46 50").split() if x.strip())
 WORKERS = int(os.environ.get("WORKERS", "8"))
+MAX_MINUTES = int(os.environ.get("MAX_MINUTES", "0"))   # 0 = illimitato
+_START = time.time()
 
 FR_QUERY = ("query($e:Int!,$d:Int!,$p:Int!){worldData{encounter(id:$e){"
             "fightRankings(difficulty:$d,page:$p)}}}")
