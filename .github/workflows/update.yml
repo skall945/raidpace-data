@@ -7,7 +7,7 @@ on:
     inputs:
       zones:
         description: "ID zona WCL (spazio-separati)"
-        default: "31 33 35 38 42 44 46 53 54"
+        default: "31 33 35 38 42 44 46 50 53 54 57"
 
 permissions:
   contents: write
@@ -25,7 +25,7 @@ jobs:
           WCL_CLIENT_ID: ${{ secrets.WCL_CLIENT_ID }}
           WCL_CLIENT_SECRET: ${{ secrets.WCL_CLIENT_SECRET }}
           DIFFS: "5"
-        run: python gen.py ${{ github.event.inputs.zones || '31 33 35 38 42 44 46 53 54' }}
+        run: python gen.py ${{ github.event.inputs.zones || '31 33 35 38 42 44 46 50 53 54 57' }}
       - name: Commit se cambiato
         run: |
           git config user.name "raidpace-bot"

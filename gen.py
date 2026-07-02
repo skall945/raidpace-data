@@ -24,7 +24,7 @@ TOKEN_URL = "https://www.warcraftlogs.com/oauth/token"
 GQL_URL = "https://www.warcraftlogs.com/api/v2/client"
 DIFFS = [int(x) for x in os.environ.get("DIFFS", "5 4").split()]
 # zone di default: dai raid recenti (Dragonflight in poi). Sovrascrivibili da argv.
-ZONES = [int(x) for x in os.environ.get("ZONES", "46 44 42 38 36 35 33 31 29").split()]
+ZONES = [int(x) for x in os.environ.get("ZONES", "31 33 35 38 42 44 46 50 53 54 57").split()]
 
 FR_QUERY = ("query($e:Int!,$d:Int!,$p:Int!){worldData{encounter(id:$e){"
             "fightRankings(difficulty:$d,page:$p)}}}")
@@ -95,14 +95,19 @@ def main():
     zones = [int(a) for a in sys.argv[1:]] or ZONES
     _TOKEN = get_token()
     outfile = os.environ.get("OUT", "logdata.json")
-    out = {"generatedAt": int(time.time()), "encounters": {}}
+    # riparti dal file esistente: aggiornamenti incrementali per zona
+    try:
+        out = json.load(open(outfile, encoding="utf-8"))
+        out.setdefault("encounters", {})
+    except Exception:
+        out = {"generatedAt": int(time.time()), "encounters": {}}
     for zid in zones:
         try:
             zname, encs = zone_encounters(zid)
         except Exception as ex:
             sys.stderr.write(f"zona {zid}: {ex}\n")
             continue
-        if len(encs) < 4:   # non e' un raid vero
+        if not encs:
             continue
         sys.stderr.write(f"zona {zid} '{zname}': {len(encs)} boss\n")
         for e in encs:
