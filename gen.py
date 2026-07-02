@@ -136,6 +136,10 @@ def main():
     global _TOKEN
     zones = [int(a) for a in sys.argv[1:]] or ZONES
     _TOKEN = get_token()
+    try:
+        gen_worlddata()
+    except Exception as ex:
+        sys.stderr.write("worlddata: %s\n" % ex)
     outfile = os.environ.get("OUT", "logdata.json")
     try:
         out = json.load(open(outfile, encoding="utf-8"))
@@ -213,3 +217,56 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+# ---- worlddata.json: espansioni+raid per i menu dell'app (statico, zero WCL a runtime)
+WD_QUERY = ("query{worldData{expansions{id name zones{id name "
+            "difficulties{id name} encounters{id name}}}}}")
+RAID_DIFF_NAMES = {"lfr", "looking for raid", "normal", "heroic", "mythic",
+                   "10 player", "25 player", "10 player (heroic)",
+                   "25 player (heroic)", "40 player"}
+NON_RAID_KEYWORDS = ("mythic+", "dungeon", "delve", "arena", "torghast",
+                     "horrific vision", "island expedition", "scenario",
+                     "proving grounds", "brawl")
+BLOCKED_NAME_TOKENS = {"beta", "ptr", "alpha"}
+BLOCKED_NAME_PHRASES = ("complete raid", "test realm", "tournament realm")
+
+
+def _name_blocked(name):
+    low = (name or "").lower()
+    if any(p in low for p in BLOCKED_NAME_PHRASES):
+        return True
+    tokens = "".join(c if c.isalnum() else " " for c in low).split()
+    return any(t in BLOCKED_NAME_TOKENS for t in tokens)
+
+
+def _is_raid_zone(z):
+    name = (z.get("name") or "").lower()
+    if _name_blocked(name) or any(k in name for k in NON_RAID_KEYWORDS):
+        return False
+    dn = {(d.get("name") or "").lower() for d in (z.get("difficulties") or [])}
+    return len(dn & RAID_DIFF_NAMES) >= 2
+
+
+def gen_worlddata():
+    """Scrive worlddata.json: stessa struttura di fetch_worlddata dell'app."""
+    data = gql(WD_QUERY, {})
+    out = []
+    for exp in ((data.get("worldData") or {}).get("expansions") or []):
+        if _name_blocked(exp.get("name")):
+            continue
+        zones = [{"id": z.get("id"), "name": z.get("name"),
+                  "difficulties": [{"id": d.get("id"), "name": d.get("name")}
+                                   for d in (z.get("difficulties") or [])
+                                   if "lfr" not in (d.get("name") or "").lower()
+                                   and "raid finder" not in (d.get("name") or "").lower()],
+                  "encounters": [{"id": e.get("id"), "name": e.get("name")}
+                                 for e in (z.get("encounters") or [])]}
+                 for z in (exp.get("zones") or []) if _is_raid_zone(z)]
+        if zones:
+            out.append({"id": exp.get("id"), "name": exp.get("name"), "zones": zones})
+    out.sort(key=lambda e: -(e.get("id") or 0))
+    with open("worlddata.json", "w", encoding="utf-8") as f:
+        json.dump({"generatedAt": int(time.time()), "expansions": out}, f,
+                  ensure_ascii=False, separators=(",", ":"))
+    sys.stderr.write("worlddata.json: %d espansioni\n" % len(out))
