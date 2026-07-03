@@ -152,7 +152,16 @@ def main():
         with open(outfile, "w", encoding="utf-8") as f:
             json.dump(out, f, ensure_ascii=False, separators=(",", ":"))
 
+    def expired():
+        return MAX_MINUTES and (time.time() - _START) > MAX_MINUTES * 60
+
+    # PASSATA 1 - LIGHT per TUTTE le zone (col budget fresco): indicatori 'ha log'
+    # aggiornati ovunque + raccolta guildID per la passata FULL.
+    full_work = []   # (zid, guild_gids, guild_bosses)
     for zid in zones:
+        if expired():
+            sys.stderr.write("tempo scaduto in fase light: esco pulito.\n")
+            break
         try:
             zname, encs = zone_encounters(zid)
         except Exception as ex:
@@ -162,10 +171,11 @@ def main():
             continue
         sys.stderr.write(f"zona {zid} '{zname}': {len(encs)} boss"
                          f"{' [FULL]' if zid in FULL else ''}\n")
-        # 1) mappa LIGHT per ogni boss (chi ha log) + raccolta gid
         guild_gids = {}          # key -> gid (unione su tutti i boss della zona)
         guild_bosses = {}        # key -> set di "enc:diff" in cui appare
         for e in encs:
+            if expired():
+                break
             eid = e.get("id")
             for diff in DIFFS:
                 t = time.time()
@@ -180,39 +190,56 @@ def main():
                 save()
                 sys.stderr.write(f"  {e.get('name')} (enc {eid} d{diff}): "
                                  f"{len(m)} con log in {time.time()-t:.0f}s\n")
-        if zid not in FULL:
-            continue
-        # 2) FULL incrementale: first-kill [pull,url] per le gilde non ancora fatte
+        if zid in FULL:
+            full_work.append((zid, guild_gids, guild_bosses))
+
+    # PASSATA 2 - FULL incrementale: first-kill [pull,url] per le gilde nuove.
+    from concurrent.futures import as_completed
+    for zid, guild_gids, guild_bosses in full_work:
+        if expired():
+            break
         todo = [(key, gid) for key, gid in guild_gids.items()
                 if any(not isinstance(out["encounters"].get(ek, {}).get(key), list)
                        for ek in guild_bosses.get(key, ()))]
-        sys.stderr.write(f"  FULL: {len(todo)} gilde da calcolare "
+        sys.stderr.write(f"FULL zona {zid}: {len(todo)} gilde da calcolare "
                          f"({len(guild_gids)-len(todo)} gia' fatte)\n")
-        done = [0]
 
         def work(item):
             key, gid = item
+            if expired():
+                return item[0], {}
             try:
                 fk = guild_firstkills(gid, zid)
             except Exception:
                 fk = {}
             return key, fk
 
-        t0 = time.time()
-        with ThreadPoolExecutor(max_workers=WORKERS) as ex:
-            for key, fk in ex.map(work, todo):
+        t0, done = time.time(), 0
+        ex = ThreadPoolExecutor(max_workers=WORKERS)
+        futs = [ex.submit(work, it) for it in todo]
+        try:
+            for fut in as_completed(futs):
+                key, fk = fut.result()
                 for (enc, diff), val in fk.items():
                     ek = f"{enc}:{diff}"
                     if ek in out["encounters"] and key in out["encounters"][ek]:
                         out["encounters"][ek][key] = val
-                done[0] += 1
-                if done[0] % 25 == 0:
+                done += 1
+                if done % 25 == 0:
                     save()
-                    rate = done[0] / max(1, time.time() - t0)
-                    sys.stderr.write(f"  FULL: {done[0]}/{len(todo)} "
-                                     f"({rate:.1f}/s, eta {int((len(todo)-done[0])/max(rate,0.01)/60)}m)\n")
+                    rate = done / max(1, time.time() - t0)
+                    sys.stderr.write(f"  FULL: {done}/{len(todo)} ({rate:.2f}/s, "
+                                     f"eta {int((len(todo)-done)/max(rate,0.01)/60)}m)\n")
+                if expired():
+                    sys.stderr.write("  tempo scaduto: fermo la FULL, salvo ed esco.\n")
+                    break
+        finally:
+            for f in futs:
+                f.cancel()
+            ex.shutdown(wait=True, cancel_futures=True)   # aspetta i running: usciamo puliti
         save()
-        sys.stderr.write(f"  FULL zona {zid} completata in {int((time.time()-t0)/60)}m\n")
+        sys.stderr.write(f"FULL zona {zid}: fermata a {done}/{len(todo)} "
+                         f"in {int((time.time()-t0)/60)}m\n")
 
 
 if __name__ == "__main__":
