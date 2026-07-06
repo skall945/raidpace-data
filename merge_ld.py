@@ -15,7 +15,7 @@ import time
 
 def load(path):
     try:
-        return json.load(open(path, encoding="utf-8")).get("encounters", {})
+        return json.load(open(path, encoding="utf-8"))
     except Exception as e:
         sys.stderr.write("merge: impossibile leggere %s (%s)\n" % (path, e))
         return {}
@@ -24,18 +24,25 @@ def load(path):
 def main():
     gen = load(sys.argv[1]) if len(sys.argv) > 1 else {}
     cur = load("logdata.json")
+    ge, ce = gen.get("encounters", {}), cur.get("encounters", {})
     out = {}
-    for ek in set(gen) | set(cur):
-        m = dict(cur.get(ek, {}))
-        for k, v in gen.get(ek, {}).items():
+    for ek in set(ge) | set(ce):
+        m = dict(ce.get(ek, {}))
+        for k, v in ge.get(ek, {}).items():
             if isinstance(v, list) or not isinstance(m.get(k), list):
                 m[k] = v
         out[ek] = m
-    json.dump({"generatedAt": int(time.time()), "encounters": out},
+    # fullComplete: tieni il timestamp piu' recente per zona (union)
+    fc = dict(cur.get("fullComplete", {}))
+    for z, ts in gen.get("fullComplete", {}).items():
+        if ts > fc.get(z, 0):
+            fc[z] = ts
+    json.dump({"generatedAt": int(time.time()), "fullComplete": fc, "encounters": out},
               open("logdata.json", "w", encoding="utf-8"),
               ensure_ascii=False, separators=(",", ":"))
     full = sum(1 for m in out.values() for v in m.values() if isinstance(v, list))
-    sys.stderr.write("merge: %d encounter, %d first-kill\n" % (len(out), full))
+    sys.stderr.write("merge: %d encounter, %d first-kill, zone complete=%s\n"
+                     % (len(out), full, sorted(fc)))
 
 
 if __name__ == "__main__":

@@ -167,13 +167,20 @@ def main():
         # stop se tempo scaduto OPPURE budget WCL esaurito (niente grind sui 429)
         return _BUDGET_OUT or (MAX_MINUTES and (time.time() - _START) > MAX_MINUTES * 60)
 
-    # PASSATA 1 - LIGHT per TUTTE le zone (col budget fresco): indicatori 'ha log'
-    # aggiornati ovunque + raccolta guildID per la passata FULL.
-    full_work = []   # (zid, guild_gids, guild_bosses)
+    # zone gia' COMPLETE (first-kill calcolati per tutti): si saltano per ~20h,
+    # poi si ricontrollano (per le kill nuove). Cosi' ogni run spende budget solo
+    # dove manca. In ordine di priorita' (tier attuale prima -> vedi ZONES).
+    done_map = out.setdefault("fullComplete", {})
+    SKIP_SEC = int(os.environ.get("SKIP_HOURS", "20")) * 3600
+    from concurrent.futures import as_completed
+
     for zid in zones:
         if expired():
-            sys.stderr.write("tempo scaduto in fase light: esco pulito.\n")
+            sys.stderr.write("stop (tempo/budget): esco pulito.\n")
             break
+        if (time.time() - done_map.get(str(zid), 0)) < SKIP_SEC:
+            sys.stderr.write(f"zona {zid}: gia' completa di recente, salto.\n")
+            continue
         try:
             zname, encs = zone_encounters(zid)
         except Exception as ex:
@@ -183,8 +190,8 @@ def main():
             continue
         sys.stderr.write(f"zona {zid} '{zname}': {len(encs)} boss"
                          f"{' [FULL]' if zid in FULL else ''}\n")
-        guild_gids = {}          # key -> gid (unione su tutti i boss della zona)
-        guild_bosses = {}        # key -> set di "enc:diff" in cui appare
+        # --- LIGHT: chi ha log pubblici + raccolta guildID ---
+        guild_gids, guild_bosses = {}, {}
         for e in encs:
             if expired():
                 break
@@ -202,19 +209,18 @@ def main():
                 save()
                 sys.stderr.write(f"  {e.get('name')} (enc {eid} d{diff}): "
                                  f"{len(m)} con log in {time.time()-t:.0f}s\n")
-        if zid in FULL:
-            full_work.append((zid, guild_gids, guild_bosses))
-
-    # PASSATA 2 - FULL incrementale: first-kill [pull,url] per le gilde nuove.
-    from concurrent.futures import as_completed
-    for zid, guild_gids, guild_bosses in full_work:
-        if expired():
-            break
+        if zid not in FULL or expired():
+            continue
+        # --- FULL: first-kill [pull,url] per le gilde di QUESTA zona non ancora fatte ---
         todo = [(key, gid) for key, gid in guild_gids.items()
                 if any(not isinstance(out["encounters"].get(ek, {}).get(key), list)
                        for ek in guild_bosses.get(key, ()))]
-        sys.stderr.write(f"FULL zona {zid}: {len(todo)} gilde da calcolare "
+        sys.stderr.write(f"FULL zona {zid}: {len(todo)} da calcolare "
                          f"({len(guild_gids)-len(todo)} gia' fatte)\n")
+        if not todo:
+            done_map[str(zid)] = int(time.time())   # zona completa
+            save()
+            continue
 
         def work(item):
             key, gid = item
@@ -229,6 +235,7 @@ def main():
         t0, done = time.time(), 0
         ex = ThreadPoolExecutor(max_workers=WORKERS)
         futs = [ex.submit(work, it) for it in todo]
+        interrupted = False
         try:
             for fut in as_completed(futs):
                 key, fk = fut.result()
@@ -243,15 +250,19 @@ def main():
                     sys.stderr.write(f"  FULL: {done}/{len(todo)} ({rate:.2f}/s, "
                                      f"eta {int((len(todo)-done)/max(rate,0.01)/60)}m)\n")
                 if expired():
-                    sys.stderr.write("  tempo scaduto: fermo la FULL, salvo ed esco.\n")
+                    interrupted = True
+                    sys.stderr.write("  stop: fermo la FULL, salvo.\n")
                     break
         finally:
             for f in futs:
                 f.cancel()
-            ex.shutdown(wait=True, cancel_futures=True)   # aspetta i running: usciamo puliti
+            ex.shutdown(wait=True, cancel_futures=True)
+        if not interrupted:
+            done_map[str(zid)] = int(time.time())   # zona completata in questo run
         save()
-        sys.stderr.write(f"FULL zona {zid}: fermata a {done}/{len(todo)} "
-                         f"in {int((time.time()-t0)/60)}m\n")
+        sys.stderr.write(f"FULL zona {zid}: {done}/{len(todo)} "
+                         f"in {int((time.time()-t0)/60)}m"
+                         f"{' [COMPLETA]' if not interrupted else ''}\n")
 
 
 if __name__ == "__main__":

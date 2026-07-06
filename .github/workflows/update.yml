@@ -8,8 +8,8 @@ on:
   workflow_dispatch:
     inputs:
       zones:
-        description: "ID zona WCL (spazio-separati)"
-        default: "31 33 35 38 42 44 46 50 53 54 57"
+        description: "ID zona WCL (spazio-separati, in ordine di priorita')"
+        default: "46 44 42 38 50 35 33 31 53 54 57"
 
 permissions:
   contents: write
@@ -34,11 +34,12 @@ jobs:
           WCL_CLIENT_ID: ${{ secrets.WCL_CLIENT_ID }}
           WCL_CLIENT_SECRET: ${{ secrets.WCL_CLIENT_SECRET }}
           DIFFS: "5"
-          # FULL = anche pull+url della PRIMA KILL (incrementale: solo gilde nuove)
-          FULL: "46 50"
+          # FULL su TUTTI i raid ricercabili: pull+url della PRIMA KILL, incrementale,
+          # con skip delle zone gia' complete -> ogni run avanza dove manca.
+          FULL: "46 44 42 38 50 35 33 31 53 54 57"
           # esce pulito prima del limite del job -> il parziale viene committato
           MAX_MINUTES: "120"
-        run: python gen.py ${{ github.event.inputs.zones || '31 33 35 38 42 44 46 50 53 54 57' }}
+        run: python gen.py ${{ github.event.inputs.zones || '46 44 42 38 50 35 33 31 53 54 57' }}
       - name: Commit con merge monotono (la copertura non cala mai)
         if: always()
         run: |
