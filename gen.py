@@ -59,7 +59,11 @@ def get_token():
         return json.loads(r.read().decode())["access_token"]
 
 
-def gql(query, variables, tries=8):
+_BUDGET_OUT = False   # budget orario WCL esaurito -> il run esce pulito (niente grind)
+
+
+def gql(query, variables, tries=5):
+    global _BUDGET_OUT
     body = json.dumps({"query": query, "variables": variables}).encode()
     req = urllib.request.Request(GQL_URL, data=body, headers={
         "Authorization": "Bearer " + _TOKEN, "Content-Type": "application/json"})
@@ -67,10 +71,17 @@ def gql(query, variables, tries=8):
         with urllib.request.urlopen(req, timeout=60) as r:
             return json.loads(r.read().decode()).get("data") or {}
     except urllib.error.HTTPError as e:
-        if e.code in (429, 502, 503) and tries > 1:
-            # 429 = budget orario: attesa lunga e paziente (il job e' notturno)
-            time.sleep(60.0 if e.code == 429 else 3.0 * (9 - tries))
+        if e.code in (502, 503) and tries > 1:
+            time.sleep(3.0 * (6 - tries))
             return gql(query, variables, tries - 1)
+        if e.code == 429 and tries > 1:
+            time.sleep(20.0)
+            return gql(query, variables, tries - 1)
+        if e.code == 429:
+            # 429 anche dopo i retry = budget orario finito: segnalo lo stop.
+            # Meglio uscire e committare, che sprecare l'ora restante sui 429;
+            # le corse notturne (ogni 2h) ripartono col budget fresco.
+            _BUDGET_OUT = True
         raise
 
 
@@ -153,7 +164,8 @@ def main():
             json.dump(out, f, ensure_ascii=False, separators=(",", ":"))
 
     def expired():
-        return MAX_MINUTES and (time.time() - _START) > MAX_MINUTES * 60
+        # stop se tempo scaduto OPPURE budget WCL esaurito (niente grind sui 429)
+        return _BUDGET_OUT or (MAX_MINUTES and (time.time() - _START) > MAX_MINUTES * 60)
 
     # PASSATA 1 - LIGHT per TUTTE le zone (col budget fresco): indicatori 'ha log'
     # aggiornati ovunque + raccolta guildID per la passata FULL.
