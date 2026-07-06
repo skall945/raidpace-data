@@ -39,7 +39,7 @@ jobs:
           # esce pulito prima del limite del job -> il parziale viene committato
           MAX_MINUTES: "120"
         run: python gen.py ${{ github.event.inputs.zones || '31 33 35 38 42 44 46 50 53 54 57' }}
-      - name: Commit (MERGE MONOTONO: la copertura non cala mai)
+      - name: Commit con merge monotono (la copertura non cala mai)
         if: always()
         run: |
           # 1) valida i JSON generati: se non parsano, niente commit (mai file rotti)
