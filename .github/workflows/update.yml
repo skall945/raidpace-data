@@ -39,21 +39,25 @@ jobs:
           # esce pulito prima del limite del job -> il parziale viene committato
           MAX_MINUTES: "120"
         run: python gen.py ${{ github.event.inputs.zones || '31 33 35 38 42 44 46 50 53 54 57' }}
-      - name: Commit se cambiato (senza MAI conflitti nei dati)
+      - name: Commit (MERGE MONOTONO: la copertura non cala mai)
         if: always()
         run: |
-          # 1) VALIDA i JSON: se non parsano, non si committa nulla (mai file rotti online)
+          # 1) valida i JSON generati: se non parsano, niente commit (mai file rotti)
           if ! python -c "import json; json.load(open('logdata.json',encoding='utf-8')); json.load(open('worlddata.json',encoding='utf-8'))"; then
-            echo "JSON non validi: niente commit"; exit 0
+            echo "JSON generati non validi: niente commit"; exit 0
           fi
-          # 2) niente pull/rebase sui dati (fonte dei conflitti-in-file): il run e'
-          #    l'unico scrittore concorrente (concurrency group) -> reset + riscrivi
-          cp logdata.json /tmp/ld.json && cp worlddata.json /tmp/wd.json
-          git fetch origin main
-          git reset --hard origin/main
-          cp /tmp/ld.json logdata.json && cp /tmp/wd.json worlddata.json
+          cp logdata.json /tmp/gen_ld.json
+          cp worlddata.json /tmp/gen_wd.json
           git config user.name "raidpace-bot"
           git config user.email "actions@users.noreply.github.com"
-          git add logdata.json worlddata.json
-          git commit -m "aggiorna dati ($(date -u +%FT%H:%M))" || echo "nessuna modifica"
-          git push
+          # 2) merge contro l'ULTIMO origin, con retry sulle race del push
+          for i in 1 2 3 4 5; do
+            git fetch origin main
+            git reset --hard origin/main
+            python merge_ld.py /tmp/gen_ld.json   # unisce il generato dentro origin (union)
+            cp /tmp/gen_wd.json worlddata.json
+            git add logdata.json worlddata.json
+            git commit -m "aggiorna dati ($(date -u +%FT%H:%M))" || { echo "nessuna modifica"; break; }
+            if git push; then echo "push ok"; break; fi
+            echo "push race, ritento ($i)"; sleep 5
+          done
