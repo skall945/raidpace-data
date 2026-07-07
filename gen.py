@@ -35,9 +35,11 @@ _START = time.time()
 FR_QUERY = ("query($e:Int!,$d:Int!,$p:Int!){worldData{encounter(id:$e){"
             "fightRankings(difficulty:$d,page:$p)}}}")
 ENC_QUERY = "query($z:Int!){worldData{zone(id:$z){name encounters{id name}}}}"
-REP_ALL_QUERY = ("query($g:Int!,$z:Int!,$p:Int!){reportData{reports("
-                 "guildID:$g,zoneID:$z,page:$p,limit:25){data{code startTime "
-                 "fights(killType:Encounters){id encounterID kill difficulty startTime}}"
+# limit 100 (4x meno richieste) con difficolta' come ARGOMENTO di fights: filtra
+# server-side e resta sotto il tetto di complessita' (50000).
+REP_ALL_QUERY = ("query($g:Int!,$z:Int!,$p:Int!,$d:Int!){reportData{reports("
+                 "guildID:$g,zoneID:$z,page:$p,limit:100){data{code startTime "
+                 "fights(killType:Encounters,difficulty:$d){id encounterID kill startTime}}"
                  "has_more_pages}}}")
 _TOKEN = None
 
@@ -113,33 +115,35 @@ def fr_guilds(eid, diff):
 
 
 def guild_firstkills(gid, zid):
-    """Report della gilda per la zona, UNA volta: {(enc,diff) -> [pull, url]}."""
-    fights = []   # (ts, enc, diff, kill, code, fid)
-    for page in range(1, 25):
-        try:
-            blk = ((gql(REP_ALL_QUERY, {"g": gid, "z": zid, "p": page})
-                    .get("reportData") or {}).get("reports") or {})
-        except Exception:
-            break
-        for r in (blk.get("data") or []):
-            rs = r.get("startTime") or 0
-            code = r.get("code")
-            for f in (r.get("fights") or []):
-                fights.append((rs + (f.get("startTime") or 0), f.get("encounterID"),
-                               f.get("difficulty"), bool(f.get("kill")),
-                               code, f.get("id")))
-        if not blk.get("has_more_pages"):
-            break
-    fights.sort(key=lambda x: x[0])
+    """Report della gilda per la zona: {(enc,diff) -> [pull, url]}. Una passata di
+    pagine per ogni difficolta' in DIFFS (di norma solo Mythic)."""
     out, counters = {}, {}
-    for ts, enc, diff, kill, code, fid in fights:
-        k = (enc, diff)
-        if k in out:
-            continue
-        counters[k] = counters.get(k, 0) + 1
-        if kill:
-            out[k] = [counters[k],
-                      f"https://www.warcraftlogs.com/reports/{code}?fight={fid or 'last'}"]
+    for diff in DIFFS:
+        fights = []   # (ts, enc, kill, code, fid)
+        for page in range(1, 13):   # limit 100 -> bastano meno pagine
+            try:
+                blk = ((gql(REP_ALL_QUERY, {"g": gid, "z": zid, "p": page, "d": diff})
+                        .get("reportData") or {}).get("reports") or {})
+            except Exception:
+                break
+            for r in (blk.get("data") or []):
+                rs = r.get("startTime") or 0
+                code = r.get("code")
+                for f in (r.get("fights") or []):
+                    fights.append((rs + (f.get("startTime") or 0),
+                                   f.get("encounterID"), bool(f.get("kill")),
+                                   code, f.get("id")))
+            if not blk.get("has_more_pages"):
+                break
+        fights.sort(key=lambda x: x[0])
+        for ts, enc, kill, code, fid in fights:
+            k = (enc, diff)
+            if k in out:
+                continue
+            counters[k] = counters.get(k, 0) + 1
+            if kill:
+                out[k] = [counters[k],
+                          f"https://www.warcraftlogs.com/reports/{code}?fight={fid or 'last'}"]
     return out
 
 
