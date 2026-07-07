@@ -2,14 +2,9 @@ name: Update logdata
 
 on:
   schedule:
-    # SOLO di notte italiana (~23:00-05:00 CEST = 21-03 UTC), quando i raider
-    # dormono e l'app e' idle: cosi' la generazione non toglie mai budget WCL
-    # all'app durante le ore di gioco. (Per copertura veloce SENZA vincoli:
-    # un secondo client WCL dedicato -> budget separato.)
-    - cron: '17 21 * * *'
-    - cron: '17 23 * * *'
-    - cron: '17 1 * * *'
-    - cron: '17 3 * * *'
+    # FASE DEPLOY (nessun utente ancora): ogni ora, per riempire in fretta.
+    # A riempimento fatto tornera' SOLO notturno (vedi commit successivo).
+    - cron: '17 * * * *'
   workflow_dispatch:
     inputs:
       zones:
