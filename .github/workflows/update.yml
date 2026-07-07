@@ -2,9 +2,14 @@ name: Update logdata
 
 on:
   schedule:
-    # ogni 2 ore: ogni run usa il budget WCL di quell'ora (altrimenti sprecato).
-    # Ognuno esce a budget esaurito (~pochi min) e riprende dal precedente.
-    - cron: '17 */2 * * *'
+    # SOLO di notte italiana (~23:00-05:00 CEST = 21-03 UTC), quando i raider
+    # dormono e l'app e' idle: cosi' la generazione non toglie mai budget WCL
+    # all'app durante le ore di gioco. (Per copertura veloce SENZA vincoli:
+    # un secondo client WCL dedicato -> budget separato.)
+    - cron: '17 21 * * *'
+    - cron: '17 23 * * *'
+    - cron: '17 1 * * *'
+    - cron: '17 3 * * *'
   workflow_dispatch:
     inputs:
       zones:
