@@ -98,8 +98,10 @@ def zone_encounters(zid):
 
 
 def fr_guilds(eid, diff):
-    """{key -> guildID} delle gilde con log pubblico sul boss."""
-    out = {}
+    """({key -> guildID}, {key -> [nome, server, REGIONE]}) delle gilde con log
+    pubblico sul boss. Il secondo dict serve a mostrare i NOMI veri nella classifica
+    (le chiavi sono normalizzate e perderebbero maiuscole/spazi)."""
+    out, names = {}, {}
     for page in range(1, 60):
         try:
             fr = ((gql(FR_QUERY, {"e": eid, "d": diff, "p": page})
@@ -112,11 +114,14 @@ def fr_guilds(eid, diff):
             s = r.get("server") or {}
             nm, gid = g.get("name"), g.get("id")
             if nm and gid:
-                out.setdefault(_lognorm(nm) + "|" + _lognorm(s.get("name")) + "|"
-                               + (s.get("region") or "").lower(), gid)
+                key = (_lognorm(nm) + "|" + _lognorm(s.get("name")) + "|"
+                       + (s.get("region") or "").lower())
+                out.setdefault(key, gid)
+                names.setdefault(key, [nm, s.get("name") or "",
+                                       (s.get("region") or "").upper()])
         if not fr.get("hasMorePages"):
             break
-    return out
+    return out, names
 
 
 def guild_firstkills(gid, zid):
@@ -221,14 +226,17 @@ def main():
             eid = e.get("id")
             for diff in DIFFS:
                 t = time.time()
-                m = fr_guilds(eid, diff)
+                m, nm = fr_guilds(eid, diff)
                 ek = f"{eid}:{diff}"
                 enc_map = out["encounters"].setdefault(ek, {})
+                names_map = out.setdefault("names", {})
                 for key, gid in m.items():
                     if not isinstance(enc_map.get(key), list):
                         enc_map[key] = 1        # indicatore (non degradare i [pull,url])
                     guild_gids.setdefault(key, gid)
                     guild_bosses.setdefault(key, set()).add(ek)
+                    if key in nm:
+                        names_map[key] = nm[key]   # nome/server veri per la classifica
                 save()
                 sys.stderr.write(f"  {e.get('name')} (enc {eid} d{diff}): "
                                  f"{len(m)} con log in {time.time()-t:.0f}s\n")

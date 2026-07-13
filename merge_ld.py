@@ -37,7 +37,11 @@ def main():
     for z, ts in gen.get("fullComplete", {}).items():
         if ts > fc.get(z, 0):
             fc[z] = ts
-    json.dump({"generatedAt": int(time.time()), "fullComplete": fc, "encounters": out},
+    # names: nomi veri delle gilde (union, il generato piu' recente vince)
+    names = dict(cur.get("names", {}))
+    names.update(gen.get("names", {}))
+    json.dump({"generatedAt": int(time.time()), "fullComplete": fc,
+               "names": names, "encounters": out},
               open("logdata.json", "w", encoding="utf-8"),
               ensure_ascii=False, separators=(",", ":"))
     full = sum(1 for m in out.values() for v in m.values() if isinstance(v, list))
