@@ -120,8 +120,14 @@ def fr_guilds(eid, diff):
 
 
 def guild_firstkills(gid, zid):
-    """Report della gilda per la zona: {(enc,diff) -> [pull, url]}. Una passata di
-    pagine per ogni difficolta' in DIFFS (di norma solo Mythic)."""
+    """Report della gilda per la zona: {(enc,diff) -> [pull, url, ts_prima_kill]}.
+    ts = istante (ms) della prima kill, per capire lato app se i log coprono il
+    PROGRESS (finestra dal 1o all'ultimo boss) o sono farm.
+    Deduplica la stessa fight presente in piu' log (stesso boss, stesso istante):
+    senza, una farm-clear loggata da 2 persone gonfierebbe pull e sembrerebbe
+    progresso su piu' occasioni."""
+    DEDUP_MS = 15_000
+    KILL_DEDUP_MS = 12 * 3600 * 1000
     out, counters = {}, {}
     for diff in DIFFS:
         fights = []   # (ts, enc, kill, code, fid)
@@ -141,14 +147,22 @@ def guild_firstkills(gid, zid):
             if not blk.get("has_more_pages"):
                 break
         fights.sort(key=lambda x: x[0])
+        seen = {}   # enc -> [(ts, kill), ...] gia' tenute (per la dedup)
         for ts, enc, kill, code, fid in fights:
+            lst = seen.setdefault(enc, [])
+            if any(abs(ts - x_ts) <= DEDUP_MS or
+                   (kill and x_k and abs(ts - x_ts) <= KILL_DEDUP_MS)
+                   for x_ts, x_k in lst):
+                continue   # stessa fight di un altro log
+            lst.append((ts, kill))
             k = (enc, diff)
             if k in out:
                 continue
             counters[k] = counters.get(k, 0) + 1
             if kill:
                 out[k] = [counters[k],
-                          f"https://www.warcraftlogs.com/reports/{code}?fight={fid or 'last'}"]
+                          f"https://www.warcraftlogs.com/reports/{code}?fight={fid or 'last'}",
+                          int(ts)]
     return out
 
 
@@ -221,9 +235,14 @@ def main():
         if zid not in FULL or expired():
             continue
         # --- FULL: first-kill [pull,url] per le gilde di QUESTA zona non ancora fatte ---
+        # una gilda e' "da fare" se le manca la prima kill di un boss OPPURE la voce
+        # e' nel vecchio formato [pull,url] senza data (len<3): la ricalcoliamo per
+        # aggiungere la data (serve al rilevamento "progress pubblico" lato app).
+        def _needs(ek, key):
+            v = out["encounters"].get(ek, {}).get(key)
+            return (not isinstance(v, list)) or (len(v) < 3)
         todo = [(key, gid) for key, gid in guild_gids.items()
-                if any(not isinstance(out["encounters"].get(ek, {}).get(key), list)
-                       for ek in guild_bosses.get(key, ()))]
+                if any(_needs(ek, key) for ek in guild_bosses.get(key, ()))]
         todo_full = len(todo)
         # fetta di questo run: piu' del tetto lo lasciamo ai run successivi, cosi'
         # il budget scorre anche sulle zone piu' vecchie (marcia a ritroso).
