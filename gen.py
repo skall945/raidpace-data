@@ -30,6 +30,11 @@ ZONES = [int(x) for x in os.environ.get("ZONES", "31 33 35 38 42 44 46 50 53 54 
 FULL = set(int(x) for x in os.environ.get("FULL", "46 50").split() if x.strip())
 WORKERS = int(os.environ.get("WORKERS", "8"))
 MAX_MINUTES = int(os.environ.get("MAX_MINUTES", "0"))   # 0 = illimitato
+# Tetto di first-kill calcolati per UNA zona in UN run: chiudendo la fetta prima
+# del budget, la zona viene marcata "fatta di recente" e saltata per SKIP_HOURS,
+# cosi' il run PROSEGUE a ritroso sulle zone piu' vecchie (tier attuale -> passati)
+# invece di restare bloccato all'infinito sul tier in progress (che non finisce mai).
+PER_ZONE_CAP = int(os.environ.get("PER_ZONE_CAP", "150"))
 _START = time.time()
 
 FR_QUERY = ("query($e:Int!,$d:Int!,$p:Int!){worldData{encounter(id:$e){"
@@ -219,8 +224,14 @@ def main():
         todo = [(key, gid) for key, gid in guild_gids.items()
                 if any(not isinstance(out["encounters"].get(ek, {}).get(key), list)
                        for ek in guild_bosses.get(key, ()))]
-        sys.stderr.write(f"FULL zona {zid}: {len(todo)} da calcolare "
-                         f"({len(guild_gids)-len(todo)} gia' fatte)\n")
+        todo_full = len(todo)
+        # fetta di questo run: piu' del tetto lo lasciamo ai run successivi, cosi'
+        # il budget scorre anche sulle zone piu' vecchie (marcia a ritroso).
+        todo = todo[:PER_ZONE_CAP]
+        capped = todo_full > len(todo)
+        sys.stderr.write(f"FULL zona {zid}: {todo_full} da calcolare"
+                         f"{f' (fetta di {len(todo)})' if capped else ''}, "
+                         f"{len(guild_gids)-todo_full} gia' fatte\n")
         if not todo:
             done_map[str(zid)] = int(time.time())   # zona completa
             save()
@@ -261,12 +272,15 @@ def main():
             for f in futs:
                 f.cancel()
             ex.shutdown(wait=True, cancel_futures=True)
+        # fetta chiusa senza esaurire il budget -> marca "fatta di recente":
+        # verra' saltata per SKIP_HOURS e il run prosegue sulle zone piu' vecchie.
         if not interrupted:
-            done_map[str(zid)] = int(time.time())   # zona completata in questo run
+            done_map[str(zid)] = int(time.time())
         save()
+        _tag = " [INTERROTTA dal budget]" if interrupted else (
+            " [FETTA, zona non ancora completa]" if capped else " [COMPLETA]")
         sys.stderr.write(f"FULL zona {zid}: {done}/{len(todo)} "
-                         f"in {int((time.time()-t0)/60)}m"
-                         f"{' [COMPLETA]' if not interrupted else ''}\n")
+                         f"in {int((time.time()-t0)/60)}m{_tag}\n")
 
 
 if __name__ == "__main__":
